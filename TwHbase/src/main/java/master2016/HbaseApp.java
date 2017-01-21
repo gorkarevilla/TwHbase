@@ -1,5 +1,17 @@
 package master2016;
 
+import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.ZooKeeperConnectionException;
+import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.util.Bytes;
+
 public class HbaseApp {
 
 	private static final boolean DEBUG = true;
@@ -14,6 +26,11 @@ public class HbaseApp {
 	private static String languages;
 	private static String dataFolder;
 	private static String outputFolder;
+        
+        //Name of tables and families
+        private static byte[] Table = Bytes.toBytes("Twitter");
+        private static byte[] CF_1 = Bytes.toBytes("info");
+        private static byte[] CF_2 = Bytes.toBytes("lan");
 
 	/**
 	 * 
@@ -44,17 +61,21 @@ public class HbaseApp {
 			System.out.println("Parameters: " + mode + ", " + zkHost + ", " + startTS + ", " + endTS + ", " + topN
 					+ ", " + languages + ", " + dataFolder + ", " + outputFolder);
 		}
+                
+                boolean flag_ts_correct = endTS < startTS;
 
 		// DO
-		if (mode == 1) {
+		if (mode == 1 && flag_ts_correct) {
 			runQuery1();
-		} else if (mode == 2) {
+		} else if (mode == 2 && flag_ts_correct) {
 			runQuery2();
-		} else if (mode == 3) {
+		} else if (mode == 3 && flag_ts_correct) {
 			runQuery2();
 		} else if (mode == 4) {
 			createDDBB();
-		}
+		} else{
+                        printUsageAndExit();
+                }
 
 	}
 
@@ -90,7 +111,36 @@ public class HbaseApp {
 	 * “lang.out”, for example en.out, it.out, es.out
 	 */
 	public static void createDDBB() {
-		// TODO
+            
+            try {
+                Configuration conf = HBaseConfiguration.create();
+                HBaseAdmin admin = new HBaseAdmin(conf);
+                
+                //First we clean the data
+                admin.disableTable(Table);
+                admin.deleteTable(Table);
+                
+                //And now we add the tables and families
+                
+                HTableDescriptor table = new HTableDescriptor(TableName.valueOf(Table));
+                HColumnDescriptor family_1 = new HColumnDescriptor(CF_1);
+                HColumnDescriptor family_2 = new HColumnDescriptor(CF_2);
+                family_1.setMaxVersions(10);
+                family_2.setMaxVersions(10);
+                table.addFamily(family_1);
+                table.addFamily(family_2);
+                admin.createTable(table);
+            } catch (ZooKeeperConnectionException ex) {
+                Logger.getLogger(HbaseApp.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (IOException ex) {
+                Logger.getLogger(HbaseApp.class.getName()).log(Level.SEVERE, null, ex);
+            }
 	}
+
+    private static void printUsageAndExit() {
+        System.out.println("Usage: ");
+        System.out.println("./hBaseApp.sh mode zkHost startTs endTs N Langauges dataFolder outputFolder");
+        System.out.println("Be aware that endTs must be greater than startTs");
+    }
 
 }
