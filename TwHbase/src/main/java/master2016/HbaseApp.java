@@ -5,8 +5,7 @@ public class HbaseApp {
 	private static final boolean DEBUG = true;
 	private static final boolean INFO = true;
 
-	
-	//Parameters
+	// Parameters
 	private static int mode;
 	private static String zkHost;
 	private static long startTS;
@@ -15,8 +14,7 @@ public class HbaseApp {
 	private static String languages;
 	private static String dataFolder;
 	private static String outputFolder;
-	
-	
+
 	/**
 	 * 
 	 * @param args
@@ -24,8 +22,8 @@ public class HbaseApp {
 	 *            3-endTS: 4-N: 5-Languages: 6-dataFolder: 7-outputFolder:
 	 */
 	public static void main(String[] args) {
- 
-		//If there are no 8 parameters exit with error
+
+		// If there are no 8 parameters exit with error
 		if (args.length != 8) {
 			if (INFO)
 				System.out.println(
@@ -33,7 +31,7 @@ public class HbaseApp {
 			System.exit(-1);
 		}
 
-		//Load parameters
+		// Load parameters
 		mode = Integer.valueOf(args[0]);
 		zkHost = args[1];
 		startTS = Long.valueOf(args[2]);
@@ -42,18 +40,57 @@ public class HbaseApp {
 		languages = args[5];
 		dataFolder = args[6];
 		outputFolder = args[7];
-		if(DEBUG){
-			System.out.println("Parameters: "
-					+mode+", "
-					+zkHost+", "
-					+startTS+", "
-					+endTS+", "
-					+topN+", "
-					+languages+", "
-					+dataFolder+", "
-					+outputFolder);
+		if (DEBUG) {
+			System.out.println("Parameters: " + mode + ", " + zkHost + ", " + startTS + ", " + endTS + ", " + topN
+					+ ", " + languages + ", " + dataFolder + ", " + outputFolder);
 		}
-		
+
+		// DO
+		if (mode == 1) {
+			runQuery1();
+		} else if (mode == 2) {
+			runQuery2();
+		} else if (mode == 3) {
+			runQuery2();
+		} else if (mode == 4) {
+			createDDBB();
+		}
+
+	}
+
+	/**
+	 * Given a language (lang), find the Top-N most used words for the given
+	 * language in a time interval defined with a start and end timestamp. Start
+	 * and end timestamp are in milliseconds
+	 */
+	public static void runQuery1() {
+		// TODO
+	}
+
+	/**
+	 * Find the list of Top-N most used words for each language in a time
+	 * interval defined with the provided start and end timestamp. Start and end
+	 * timestamp are in milliseconds.
+	 */
+	public static void runQuery2() {
+		// TODO
+	}
+
+	/**
+	 * Find the Top-N most used words and the frequency of each word regardless
+	 * the language in a time interval defined with the provided start and end
+	 * timestamp. Start and end timestamp are in milliseconds.
+	 */
+	public static void runQuery3() {
+		// TODO
+	}
+
+	/**
+	 * Create and load data from the files. File names have the format
+	 * “lang.out”, for example en.out, it.out, es.out
+	 */
+	public static void createDDBB() {
+		// TODO
 	}
 
 }
