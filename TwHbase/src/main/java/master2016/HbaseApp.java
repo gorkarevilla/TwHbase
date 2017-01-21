@@ -44,14 +44,14 @@ public class HbaseApp {
 		outputFolder = args[7];
 		if(DEBUG){
 			System.out.println("Parameters: "
-					+mode+","
-					+zkHost+","
-					+startTS+","
-					+endTS+","
-					+topN+","
-					+languages+","
-					+dataFolder+","
-					+outputFolder+",");
+					+mode+", "
+					+zkHost+", "
+					+startTS+", "
+					+endTS+", "
+					+topN+", "
+					+languages+", "
+					+dataFolder+", "
+					+outputFolder);
 		}
 		
 	}
