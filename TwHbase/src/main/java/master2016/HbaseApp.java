@@ -8,6 +8,7 @@ import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -26,11 +27,11 @@ public class HbaseApp {
 	private static String languages;
 	private static String dataFolder;
 	private static String outputFolder;
-        
-        //Name of tables and families
-        private static byte[] Table = Bytes.toBytes("Twitter");
-        private static byte[] CF_1 = Bytes.toBytes("info");
-        private static byte[] CF_2 = Bytes.toBytes("lan");
+
+	// Name of tables and families
+	private static byte[] Table = Bytes.toBytes("twitterStats");
+	private static byte[] CF_1 = Bytes.toBytes("info");
+	private static byte[] CF_2 = Bytes.toBytes("lan");
 
 	/**
 	 * 
@@ -42,10 +43,7 @@ public class HbaseApp {
 
 		// If there are no 8 parameters exit with error
 		if (args.length != 8) {
-			if (INFO)
-				System.out.println(
-						"Needed 8 parameters: Mode, zkHost, startTS, endTS, N, languages, dataFolder, outputFolder");
-			System.exit(-1);
+			printUsageAndExit();
 		}
 
 		// Load parameters
@@ -61,8 +59,8 @@ public class HbaseApp {
 			System.out.println("Parameters: " + mode + ", " + zkHost + ", " + startTS + ", " + endTS + ", " + topN
 					+ ", " + languages + ", " + dataFolder + ", " + outputFolder);
 		}
-                
-                boolean flag_ts_correct = endTS < startTS;
+
+		boolean flag_ts_correct = endTS < startTS;
 
 		// DO
 		if (mode == 1 && flag_ts_correct) {
@@ -73,9 +71,9 @@ public class HbaseApp {
 			runQuery2();
 		} else if (mode == 4) {
 			createDDBB();
-		} else{
-                        printUsageAndExit();
-                }
+		} else {
+			printUsageAndExit();
+		}
 
 	}
 
@@ -111,36 +109,42 @@ public class HbaseApp {
 	 * “lang.out”, for example en.out, it.out, es.out
 	 */
 	public static void createDDBB() {
-            
-            try {
-                Configuration conf = HBaseConfiguration.create();
-                HBaseAdmin admin = new HBaseAdmin(conf);
-                
-                //First we clean the data
-                admin.disableTable(Table);
-                admin.deleteTable(Table);
-                
-                //And now we add the tables and families
-                
-                HTableDescriptor table = new HTableDescriptor(TableName.valueOf(Table));
-                HColumnDescriptor family_1 = new HColumnDescriptor(CF_1);
-                HColumnDescriptor family_2 = new HColumnDescriptor(CF_2);
-                family_1.setMaxVersions(10);
-                family_2.setMaxVersions(10);
-                table.addFamily(family_1);
-                table.addFamily(family_2);
-                admin.createTable(table);
-            } catch (ZooKeeperConnectionException ex) {
-                Logger.getLogger(HbaseApp.class.getName()).log(Level.SEVERE, null, ex);
-            } catch (IOException ex) {
-                Logger.getLogger(HbaseApp.class.getName()).log(Level.SEVERE, null, ex);
-            }
+
+		try {
+			Configuration conf = HBaseConfiguration.create();
+			HBaseAdmin admin = new HBaseAdmin(conf);
+
+			// First we clean the data
+			// If is the first time, it will throw a TableNotFoundException
+			admin.disableTable(Table);
+			admin.deleteTable(Table);
+
+			// And now we add the tables and families
+
+			HTableDescriptor table = new HTableDescriptor(TableName.valueOf(Table));
+			HColumnDescriptor family_1 = new HColumnDescriptor(CF_1);
+			HColumnDescriptor family_2 = new HColumnDescriptor(CF_2);
+			family_1.setMaxVersions(10);
+			family_2.setMaxVersions(10);
+			table.addFamily(family_1);
+			table.addFamily(family_2);
+			admin.createTable(table);
+		} catch (TableNotFoundException e) {
+			// Do not do anything
+		} catch (ZooKeeperConnectionException ex) {
+			System.err.println("Error Connecting with the HBase.");
+			Logger.getLogger(HbaseApp.class.getName()).log(Level.SEVERE, null, ex);
+		} catch (IOException ex) {
+			System.err.println("Error Writting or reading in HBase.");
+			Logger.getLogger(HbaseApp.class.getName()).log(Level.SEVERE, null, ex);
+		}
 	}
 
-    private static void printUsageAndExit() {
-        System.out.println("Usage: ");
-        System.out.println("./hBaseApp.sh mode zkHost startTs endTs N Langauges dataFolder outputFolder");
-        System.out.println("Be aware that endTs must be greater than startTs");
-    }
+	private static void printUsageAndExit() {
+		System.out.println("Usage: ");
+		System.out.println("./hBaseApp.sh mode zkHost startTs endTs N Langauges dataFolder outputFolder");
+		System.out.println("Be aware that endTs must be greater than startTs");
+		System.exit(-1);
+	}
 
 }
