@@ -24,7 +24,7 @@ public class HbaseApp {
 	private static long startTS;
 	private static long endTS;
 	private static int topN;
-	private static String languages;
+	private static String[] languages;
 	private static String dataFolder;
 	private static String outputFolder;
 
@@ -52,7 +52,7 @@ public class HbaseApp {
 		startTS = Long.valueOf(args[2]);
 		endTS = Long.valueOf(args[3]);
 		topN = Integer.valueOf(args[4]);
-		languages = args[5];
+		languages = args[5].split(",");
 		dataFolder = args[6];
 		outputFolder = args[7];
 		if (DEBUG) {
