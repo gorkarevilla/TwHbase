@@ -1,6 +1,7 @@
 package master2016;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.hadoop.conf.Configuration;
@@ -11,6 +12,12 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.filter.CompareFilter;
+import org.apache.hadoop.hbase.filter.Filter;
+import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 
 public class HbaseApp {
@@ -30,8 +37,12 @@ public class HbaseApp {
 
 	// Name of tables and families
 	private static byte[] Table = Bytes.toBytes("twitterStats");
-	private static byte[] CF_1 = Bytes.toBytes("info");
-	private static byte[] CF_2 = Bytes.toBytes("lan");
+	private static byte[] Lang = Bytes.toBytes("lang");
+	private static byte[] Ht = Bytes.toBytes("ht");
+
+	// Columns
+	private static byte[] Name = Bytes.toBytes("name");
+	private static byte[] Freq = Bytes.toBytes("freq");
 
 	/**
 	 * 
@@ -57,10 +68,10 @@ public class HbaseApp {
 		outputFolder = args[7];
 		if (DEBUG) {
 			System.out.println("Parameters: " + mode + ", " + zkHost + ", " + startTS + ", " + endTS + ", " + topN
-					+ ", " + languages + ", " + dataFolder + ", " + outputFolder);
+					+ ", " + Arrays.toString(languages) + ", " + dataFolder + ", " + outputFolder);
 		}
 
-		boolean flag_ts_correct = endTS < startTS;
+		boolean flag_ts_correct = endTS > startTS;
 
 		// DO
 		if (mode == 1 && flag_ts_correct) {
@@ -81,9 +92,43 @@ public class HbaseApp {
 	 * Given a language (lang), find the Top-N most used words for the given
 	 * language in a time interval defined with a start and end timestamp. Start
 	 * and end timestamp are in milliseconds
+	 * 
+	 * @throws IOException
 	 */
 	public static void runQuery1() {
-		// TODO
+		if (languages.length != 1) {
+			printQuery1Usage();
+		}
+
+		// Instantiating Configuration class
+		Configuration config = HBaseConfiguration.create();
+
+		// Instantiating HTable class
+		try {
+			HTable table = new HTable(config, Table);
+
+			// Instantiating the Scan class
+			Scan scan = new Scan();
+
+			Filter f = new SingleColumnValueFilter(Lang, Name, CompareFilter.CompareOp.EQUAL,Bytes.toBytes(languages[0]));
+			
+			// Scanning the required columns
+			scan.addColumn(Lang, Name);
+			scan.addColumn(Ht, Name);
+			scan.addColumn(Ht, Freq);
+			scan.setTimeRange(startTS, endTS);
+			
+			scan.setFilter(f);
+			
+			// Getting the scan result
+			ResultScanner scanner = table.getScanner(scan);
+			
+			
+
+		} catch (IOException e) {
+			System.err.println("Error, Can not read from the database");
+			// e.printStackTrace();
+		}
 	}
 
 	/**
@@ -122,8 +167,8 @@ public class HbaseApp {
 			// And now we add the tables and families
 
 			HTableDescriptor table = new HTableDescriptor(TableName.valueOf(Table));
-			HColumnDescriptor family_1 = new HColumnDescriptor(CF_1);
-			HColumnDescriptor family_2 = new HColumnDescriptor(CF_2);
+			HColumnDescriptor family_1 = new HColumnDescriptor(Lang);
+			HColumnDescriptor family_2 = new HColumnDescriptor(Ht);
 			family_1.setMaxVersions(10);
 			family_2.setMaxVersions(10);
 			table.addFamily(family_1);
@@ -143,6 +188,13 @@ public class HbaseApp {
 	private static void printUsageAndExit() {
 		System.out.println("Usage: ");
 		System.out.println("./hBaseApp.sh mode zkHost startTs endTs N Langauges dataFolder outputFolder");
+		System.out.println("Be aware that endTs must be greater than startTs");
+		System.exit(-1);
+	}
+
+	private static void printQuery1Usage() {
+		System.out.println("Usage of Mode 1: ");
+		System.out.println("./hBaseApp.sh 1 zkHost startTS endTS N language outputFolder");
 		System.out.println("Be aware that endTs must be greater than startTs");
 		System.exit(-1);
 	}
