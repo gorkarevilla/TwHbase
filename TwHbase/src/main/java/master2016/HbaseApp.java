@@ -1,6 +1,10 @@
 package master2016;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.hadoop.conf.Configuration;
@@ -11,6 +15,7 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.util.Bytes;
 
 public class HbaseApp {
@@ -30,8 +35,8 @@ public class HbaseApp {
 
 	// Name of tables and families
 	private static byte[] Table = Bytes.toBytes("twitterStats");
-	private static byte[] CF_1 = Bytes.toBytes("info");
-	private static byte[] CF_2 = Bytes.toBytes("lan");
+	private static byte[] CF_1 = Bytes.toBytes("lang");
+	private static byte[] CF_2 = Bytes.toBytes("ht");
 
 	/**
 	 * 
@@ -124,19 +129,47 @@ public class HbaseApp {
 			HTableDescriptor table = new HTableDescriptor(TableName.valueOf(Table));
 			HColumnDescriptor family_1 = new HColumnDescriptor(CF_1);
 			HColumnDescriptor family_2 = new HColumnDescriptor(CF_2);
-			family_1.setMaxVersions(10);
-			family_2.setMaxVersions(10);
+			family_1.setMaxVersions(100);
+			family_2.setMaxVersions(100);
 			table.addFamily(family_1);
 			table.addFamily(family_2);
 			admin.createTable(table);
+                        
+                        //Finally we read from the file and add the values
+                        
+
+                        File folder = new File(dataFolder);
+                        File[] listOfFiles = folder.listFiles();
+
+                        for (File file : listOfFiles) {
+                            if (file.isFile() && file.getName().substring(file.getName().lastIndexOf('.')).equals(".out")) {
+                                FileInputStream fstream = new FileInputStream(file.getName());
+                                BufferedReader br = new BufferedReader(new InputStreamReader(fstream));
+
+                                String strLine;
+
+                                //Read File Line By Line
+                                while ((strLine = br.readLine()) != null)   {
+                                  String[] values = strLine.split(",");
+                                  addValues(values[0], values[1], values[2], values[3]);
+                                  addValues(values[0], values[1], values[4], values[5]);
+                                  addValues(values[0], values[1], values[6], values[7]);
+                                }
+
+                                //Close the input stream
+                                br.close();
+                                }
+                        }
+
 		} catch (TableNotFoundException e) {
-			// Do not do anything
+			System.out.println("ERR: The table not does not exist");
+                        printUsageAndExit();
 		} catch (ZooKeeperConnectionException ex) {
-			System.err.println("Error Connecting with the HBase.");
-			Logger.getLogger(HbaseApp.class.getName()).log(Level.SEVERE, null, ex);
+			System.out.println("Error Connecting with the HBase.");
+                        printUsageAndExit();
 		} catch (IOException ex) {
-			System.err.println("Error Writting or reading in HBase.");
-			Logger.getLogger(HbaseApp.class.getName()).log(Level.SEVERE, null, ex);
+			System.out.println("Error Writting or reading in HBase.");
+                        printUsageAndExit();
 		}
 	}
 
@@ -146,5 +179,21 @@ public class HbaseApp {
 		System.out.println("Be aware that endTs must be greater than startTs");
 		System.exit(-1);
 	}
+
+    private static void addValues(String timestamp, String language, String ht, String freq) {
+        byte[] key = generateKey(language, ht);
+        Put put = new Put(key, Long.parseLong(timestamp));
+        put.add(CF_1, Bytes.toBytes("name"), Bytes.toBytes(language));
+        put.add(CF_2, Bytes.toBytes("name"), Bytes.toBytes(ht));
+        put.add(CF_2, Bytes.toBytes("freq"), Bytes.toBytes(freq));
+        
+    }
+
+    private static byte[] generateKey(String language, String ht) {
+        byte[] key = new byte[42];
+        System.arraycopy(Bytes.toBytes(language),0,key,0,language.length());
+        System.arraycopy(Bytes.toBytes(ht),0,key,2,ht.length());
+        return key;
+    }
 
 }
