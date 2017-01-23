@@ -2,6 +2,12 @@ package master2016;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.Map.Entry;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.hadoop.conf.Configuration;
@@ -13,6 +19,7 @@ import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.filter.CompareFilter;
@@ -43,6 +50,9 @@ public class HbaseApp {
 	// Columns
 	private static byte[] Name = Bytes.toBytes("name");
 	private static byte[] Freq = Bytes.toBytes("freq");
+
+	// Data Structures
+	private static Map<String, Integer> hashtagList;
 
 	/**
 	 * 
@@ -93,7 +103,6 @@ public class HbaseApp {
 	 * language in a time interval defined with a start and end timestamp. Start
 	 * and end timestamp are in milliseconds
 	 * 
-	 * @throws IOException
 	 */
 	public static void runQuery1() {
 		if (languages.length != 1) {
@@ -110,20 +119,42 @@ public class HbaseApp {
 			// Instantiating the Scan class
 			Scan scan = new Scan();
 
-			Filter f = new SingleColumnValueFilter(Lang, Name, CompareFilter.CompareOp.EQUAL,Bytes.toBytes(languages[0]));
-			
+			Filter f = new SingleColumnValueFilter(Lang, Name, CompareFilter.CompareOp.EQUAL,
+					Bytes.toBytes(languages[0]));
+
 			// Scanning the required columns
 			scan.addColumn(Lang, Name);
 			scan.addColumn(Ht, Name);
 			scan.addColumn(Ht, Freq);
 			scan.setTimeRange(startTS, endTS);
-			
+
 			scan.setFilter(f);
-			
+
 			// Getting the scan result
 			ResultScanner scanner = table.getScanner(scan);
-			
-			
+
+			hashtagList = new HashMap<String, Integer>();
+
+			// Reading values from scan result
+			for (Result result = scanner.next(); result != null; result = scanner.next()) {
+
+				String hashtag = new String(result.getValue(Ht, Name));
+				int freq = Integer.valueOf(new String(result.getValue(Ht, Freq)));
+				
+				if (DEBUG)
+					System.out.println("Hashtag : " + hashtag + " , " + freq + ".");
+
+				// Add to List
+				addToList(hashtag, freq);
+			}
+
+			// closing the scanner
+			scanner.close();
+
+			String[][] TopN = getTopNArray(topN);
+
+		} catch (TableNotFoundException e) {
+			System.err.println("Error, Table is not created, try with mode 4.");
 
 		} catch (IOException e) {
 			System.err.println("Error, Can not read from the database");
@@ -183,6 +214,60 @@ public class HbaseApp {
 			System.err.println("Error Writting or reading in HBase.");
 			Logger.getLogger(HbaseApp.class.getName()).log(Level.SEVERE, null, ex);
 		}
+	}
+
+	/**
+	 * Add hashtag to list or increase the freq value
+	 * 
+	 * @param hashtag
+	 * 
+	 */
+	private static void addToList(String hashtag, int freq) {
+
+		// If contains the hashtag, add freq
+		if (hashtagList.containsKey(hashtag)) {
+			hashtagList.put(hashtag, hashtagList.get(hashtag) + freq);
+		} else { // Add with freq
+			hashtagList.put(hashtag, freq);
+		}
+
+	}
+
+	/**
+	 * Get the Top N array with the most used hashtags and the frecuency.
+	 * 
+	 * @return array N rows and 2 cols with the topN Top1 = array[0][x] Top2 =
+	 *         array[1][x] Top3 = array[2][x] ...
+	 */
+	private static String[][] getTopNArray(int n) {
+		String[][] topN = new String[n][2];
+
+		ValueComparator bvc = new ValueComparator(hashtagList);
+		TreeMap<String, Integer> sorted_hashtag = new TreeMap<String, Integer>(bvc);
+
+		sorted_hashtag.putAll(hashtagList);
+		Set<Entry<String, Integer>> set = sorted_hashtag.entrySet();
+		Iterator<Entry<String, Integer>> i = set.iterator();
+		for (int c = 0; c < n; c++) {
+
+			if (i.hasNext() == false) {
+				topN[c][0] = "null";
+				topN[c][1] = "0";
+
+			} else {
+				Map.Entry<String, Integer> me = (Map.Entry<String, Integer>) i.next();
+				topN[c][0] = me.getKey().toString();
+				topN[c][1] = me.getValue().toString();
+			}
+		}
+
+		if (DEBUG) {
+			for (int c = 0; c < n; ++c) {
+				System.out.println("=> Top" + c + ": " + topN[c][0] + ":" + topN[c][1]);
+			}
+		}
+
+		return topN;
 	}
 
 	private static void printUsageAndExit() {
