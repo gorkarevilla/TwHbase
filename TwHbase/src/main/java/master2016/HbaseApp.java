@@ -152,6 +152,9 @@ public class HbaseApp {
 			scanner.close();
 
 			String[][] TopN = getTopNArray(topN);
+			
+			if (DEBUG)
+				Arrays.deepToString(TopN);
 
 		} catch (TableNotFoundException e) {
 			System.err.println("Error, Table is not created, try with mode 4.");
