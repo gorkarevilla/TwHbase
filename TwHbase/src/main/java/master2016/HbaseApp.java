@@ -67,7 +67,6 @@ public class HbaseApp {
 	private static HTable hTableTwitter;
 	private static Configuration hConfiguration;
 	private static HBaseAdmin hAdmin;
-	private static HConnection hConnection;
 
 	// Data Structures
 	private static Map<String, Integer> hashtagList;
@@ -152,7 +151,6 @@ public class HbaseApp {
 		try {
 			hConfiguration = HBaseConfiguration.create();
 			hAdmin = new HBaseAdmin(hConfiguration);
-			hConnection = HConnectionManager.createConnection(hConfiguration);
 			hTableTwitter = new HTable(hConfiguration, TABLENAME);
 		} catch (MasterNotRunningException e) {
 			System.err.println("Error, The Master is not running.");
