@@ -15,6 +15,8 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.client.HConnection;
+import org.apache.hadoop.hbase.client.HConnectionManager;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.util.Bytes;
 
@@ -46,20 +48,41 @@ public class HbaseApp {
 	 */
 	public static void main(String[] args) {
 
-		// If there are no 8 parameters exit with error
-		if (args.length != 8) {
-			printUsageAndExit();
-		}
-
+		
 		// Load parameters
 		mode = Integer.valueOf(args[0]);
-		zkHost = args[1];
-		startTS = Long.valueOf(args[2]);
-		endTS = Long.valueOf(args[3]);
-		topN = Integer.valueOf(args[4]);
-		languages = args[5].split(",");
-		dataFolder = args[6];
-		outputFolder = args[7];
+                
+            switch (mode) {
+                case 1:
+                    zkHost = args[1];
+                    startTS = Long.valueOf(args[2]);
+                    endTS = Long.valueOf(args[3]);
+                    topN = Integer.valueOf(args[4]);
+                    languages = args[5].split(",");
+                    outputFolder = args[6];
+                    break;
+                case 2:
+                    zkHost = args[1];
+                    startTS = Long.valueOf(args[2]);
+                    endTS = Long.valueOf(args[3]);
+                    topN = Integer.valueOf(args[4]);
+                    languages = args[5].split(",");
+                    outputFolder = args[6];
+                    break;
+                case 3:
+                    zkHost = args[1];
+                    startTS = Long.valueOf(args[2]);
+                    endTS = Long.valueOf(args[3]);
+                    topN = Integer.valueOf(args[4]);
+                    outputFolder = args[5];
+                    break;
+                    
+                default:
+                    zkHost = args[1];
+                    dataFolder = args[2];                    
+                    break;
+            }
+            		
 		if (DEBUG) {
 			System.out.println("Parameters: " + mode + ", " + zkHost + ", " + startTS + ", " + endTS + ", " + topN
 					+ ", " + languages + ", " + dataFolder + ", " + outputFolder);
@@ -118,12 +141,12 @@ public class HbaseApp {
 		try {
 			Configuration conf = HBaseConfiguration.create();
 			HBaseAdmin admin = new HBaseAdmin(conf);
+                        HConnection conn = HConnectionManager.createConnection(conf);
 
 			// First we clean the data
 			// If is the first time, it will throw a TableNotFoundException
-			admin.disableTable(Table);
-			admin.deleteTable(Table);
-
+			cleanTable(admin);
+                        
 			// And now we add the tables and families
 
 			HTableDescriptor table = new HTableDescriptor(TableName.valueOf(Table));
@@ -143,7 +166,7 @@ public class HbaseApp {
 
                         for (File file : listOfFiles) {
                             if (file.isFile() && file.getName().substring(file.getName().lastIndexOf('.')).equals(".out")) {
-                                FileInputStream fstream = new FileInputStream(file.getName());
+                                FileInputStream fstream = new FileInputStream(dataFolder+"/"+file.getName());
                                 BufferedReader br = new BufferedReader(new InputStreamReader(fstream));
 
                                 String strLine;
@@ -161,10 +184,7 @@ public class HbaseApp {
                                 }
                         }
 
-		} catch (TableNotFoundException e) {
-			System.out.println("ERR: The table not does not exist");
-                        printUsageAndExit();
-		} catch (ZooKeeperConnectionException ex) {
+                }catch (ZooKeeperConnectionException ex) {
 			System.out.println("Error Connecting with the HBase.");
                         printUsageAndExit();
 		} catch (IOException ex) {
@@ -176,7 +196,6 @@ public class HbaseApp {
 	private static void printUsageAndExit() {
 		System.out.println("Usage: ");
 		System.out.println("./hBaseApp.sh mode zkHost startTs endTs N Langauges dataFolder outputFolder");
-		System.out.println("Be aware that endTs must be greater than startTs");
 		System.exit(-1);
 	}
 
@@ -194,6 +213,15 @@ public class HbaseApp {
         System.arraycopy(Bytes.toBytes(language),0,key,0,language.length());
         System.arraycopy(Bytes.toBytes(ht),0,key,2,ht.length());
         return key;
+    }
+
+    private static void cleanTable(HBaseAdmin admin) {
+            try {
+                admin.disableTable(Table);
+                admin.deleteTable(Table);
+            } catch (IOException ex) {
+                System.out.println("The table does not exist, no need to remove it");
+            } 
     }
 
 }
