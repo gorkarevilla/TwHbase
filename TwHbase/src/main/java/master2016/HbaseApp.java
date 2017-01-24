@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -140,7 +141,7 @@ public class HbaseApp {
 
 		// DO
 		if (mode == 1 && flag_ts_correct) {
-			runQuery1();
+			runQuery1(languages);
 		} else if (mode == 2 && flag_ts_correct) {
 			runQuery2();
 		} else if (mode == 3 && flag_ts_correct) {
@@ -174,8 +175,9 @@ public class HbaseApp {
 	 * language in a time interval defined with a start and end timestamp. Start
 	 * and end timestamp are in milliseconds
 	 * 
+     * @param languages
 	 */
-	public static void runQuery1() {
+	public static void runQuery1(String[] languages) {
 		if (languages.length != 1) {
 			printQuery1Usage();
 		}
@@ -201,22 +203,23 @@ public class HbaseApp {
 			ResultScanner scanner = hTableTwitter.getScanner(scan);
 
 			hashtagList = new HashMap<String, Integer>();
-
+                        ArrayList<String> hts = new ArrayList();
+                        ArrayList<Integer> fs = new ArrayList();
 			// Reading values from scan result
 			for (Result result = scanner.next(); result != null; result = scanner.next()) {
 				
-				
+			
 				//Reading Cells for each result
-				for (Cell cell : result.listCells() ) {
-					String hashtag = Bytes.toString ( CellUtil.cloneValue(cell));
-					int freq = Integer.valueOf(new String(result.getValue(familyHt, columnFreq)));
-
-					if (DEBUG)
-						System.out.println("Hashtag : " + hashtag + " , " + freq + ".");
-
-					// Add to List
-					addToList(hashtag, freq);
+				for (Cell cell : result.getColumnCells(familyHt,columnName) ) {
+					hts.add(Bytes.toString ( CellUtil.cloneValue(cell)));
+					
 				}
+				for (Cell cell : result.getColumnCells(familyHt,columnFreq) ) {
+                                        fs.add(Integer.valueOf(new String(CellUtil.cloneValue(cell))));
+				}
+                                for (int i = 0; i < hts.size(); i++){
+                                    addToList(hts.get(i), fs.get(i));
+                                }
 			}
 
 			// closing the scanner
@@ -242,7 +245,16 @@ public class HbaseApp {
 	 * timestamp are in milliseconds.
 	 */
 	public static void runQuery2() {
-		// TODO
+		if (languages.length < 1) {
+			printQuery2Usage();
+		}
+
+		for (String lang : languages){
+                    String[] l = new String[1];
+                    l[0] = lang;
+                    runQuery1(l);
+                
+                }
 	}
 
 	/**
@@ -421,6 +433,13 @@ public class HbaseApp {
 		System.out.println("Be aware that endTs must be greater than startTs");
 		System.exit(-1);
 	}
+
+    private static void printQuery2Usage() {
+                System.out.println("Usage of Mode 2: ");
+		System.out.println("./hBaseApp.sh 1 zkHost startTS endTS N language/s outputFolder");
+		System.out.println("Be aware that endTs must be greater than startTs");
+		System.exit(-1);
+    }
 
     
 }
