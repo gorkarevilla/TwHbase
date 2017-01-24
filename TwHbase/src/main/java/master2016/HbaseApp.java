@@ -9,11 +9,14 @@ import java.io.InterruptedIOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.Map.Entry;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -35,11 +38,14 @@ import org.apache.hadoop.hbase.util.Bytes;
 
 public class HbaseApp {
 
+	// Prints to be displayed
 	private static final boolean DEBUG = true;
 	private static final boolean INFO = true;
 
-	//
+	// Parameters for the program
 	private final static String TABLENAME = "twitterStats";
+	private final static int MAXVERSIONS = 100;
+	private final static int KEYSIZE = 42; // language 2, hashtag 40.
 
 	// Parameters
 	private static int mode;
@@ -184,6 +190,7 @@ public class HbaseApp {
 			scan.addColumn(familyHt, columnName);
 			scan.addColumn(familyHt, columnFreq);
 			scan.setTimeRange(startTS, endTS);
+			scan.setMaxVersions(MAXVERSIONS);
 
 			scan.setFilter(f);
 
@@ -194,15 +201,19 @@ public class HbaseApp {
 
 			// Reading values from scan result
 			for (Result result = scanner.next(); result != null; result = scanner.next()) {
+				
+				
+				//Reading Cells for each result
+				for (Cell cell : result.listCells() ) {
+					String hashtag = Bytes.toString ( CellUtil.cloneValue(cell));
+					int freq = Integer.valueOf(new String(result.getValue(familyHt, columnFreq)));
 
-				String hashtag = new String(result.getValue(familyHt, columnName));
-				int freq = Integer.valueOf(new String(result.getValue(familyHt, columnFreq)));
+					if (DEBUG)
+						System.out.println("Hashtag : " + hashtag + " , " + freq + ".");
 
-				if (DEBUG)
-					System.out.println("Hashtag : " + hashtag + " , " + freq + ".");
-
-				// Add to List
-				addToList(hashtag, freq);
+					// Add to List
+					addToList(hashtag, freq);
+				}
 			}
 
 			// closing the scanner
@@ -257,12 +268,14 @@ public class HbaseApp {
 			tableDescriptor = new HTableDescriptor(TableName.valueOf(tableTwitter));
 			HColumnDescriptor family_1 = new HColumnDescriptor(familyLang);
 			HColumnDescriptor family_2 = new HColumnDescriptor(familyHt);
-			family_1.setMaxVersions(100);
-			family_2.setMaxVersions(100);
+			family_1.setMaxVersions(MAXVERSIONS);
+			family_2.setMaxVersions(MAXVERSIONS);
 			tableDescriptor.addFamily(family_1);
 			tableDescriptor.addFamily(family_2);
 			hAdmin.createTable(tableDescriptor);
 
+			if (DEBUG)
+				System.out.println("Database Created.");
 			// Finally we read from the file and add the values
 
 			File folder = new File(dataFolder);
@@ -359,18 +372,20 @@ public class HbaseApp {
 		put.add(familyHt, columnFreq, Bytes.toBytes(freq));
 		try {
 			hTableTwitter.put(put);
+			if (DEBUG)
+				System.out.println("Inserted: " + timestamp + " " + language + " , " + ht + " , " + freq);
 		} catch (RetriesExhaustedWithDetailsException e) {
-			
+
 			e.printStackTrace();
 		} catch (InterruptedIOException e) {
-			
+
 			e.printStackTrace();
 		}
 
 	}
 
 	private static byte[] generateKey(String language, String ht) {
-		byte[] key = new byte[42];
+		byte[] key = new byte[KEYSIZE];
 		System.arraycopy(Bytes.toBytes(language), 0, key, 0, language.length());
 		System.arraycopy(Bytes.toBytes(ht), 0, key, 2, ht.length());
 		return key;
@@ -380,6 +395,8 @@ public class HbaseApp {
 		try {
 			admin.disableTable(tableTwitter);
 			admin.deleteTable(tableTwitter);
+			if (DEBUG)
+				System.out.println("Database Deleted.");
 		} catch (IOException ex) {
 			System.out.println("The table does not exist, no need to remove it");
 		}
