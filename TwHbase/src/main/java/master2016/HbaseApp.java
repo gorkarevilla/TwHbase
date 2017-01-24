@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.InterruptedIOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -16,14 +17,18 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.MasterNotRunningException;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.client.HConnection;
+import org.apache.hadoop.hbase.client.HConnectionManager;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.RetriesExhaustedWithDetailsException;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.filter.CompareFilter;
 import org.apache.hadoop.hbase.filter.Filter;
@@ -34,6 +39,9 @@ public class HbaseApp {
 
 	private static final boolean DEBUG = true;
 	private static final boolean INFO = true;
+
+	//
+	private final static String TABLENAME = "twitterStats";
 
 	// Parameters
 	private static int mode;
@@ -46,13 +54,20 @@ public class HbaseApp {
 	private static String outputFolder;
 
 	// Name of tables and families
-	private static byte[] Table = Bytes.toBytes("twitterStats");
-	private static byte[] Lang = Bytes.toBytes("lang"); //CF_1
-	private static byte[] Ht = Bytes.toBytes("ht");     //CF_2
+	private static byte[] tableTwitter = Bytes.toBytes(TABLENAME);
+	private static byte[] familyLang = Bytes.toBytes("lang"); // CF_1
+	private static byte[] familyHt = Bytes.toBytes("ht"); // CF_2
 
 	// Columns
-	private static byte[] Name = Bytes.toBytes("name");
-	private static byte[] Freq = Bytes.toBytes("freq");
+	private static byte[] columnName = Bytes.toBytes("name");
+	private static byte[] columnFreq = Bytes.toBytes("freq");
+
+	// Hbase Objects
+	private static HTableDescriptor tableDescriptor;
+	private static HTable hTableTwitter;
+	private static Configuration hConfiguration;
+	private static HBaseAdmin hAdmin;
+	private static HConnection hConnection;
 
 	// Data Structures
 	private static Map<String, Integer> hashtagList;
@@ -65,26 +80,57 @@ public class HbaseApp {
 	 */
 	public static void main(String[] args) {
 
-		// If there are no 8 parameters exit with error
-		if (args.length != 8) {
+		if (args.length < 2) {
 			printUsageAndExit();
 		}
 
 		// Load parameters
 		mode = Integer.valueOf(args[0]);
-		zkHost = args[1];
-		startTS = Long.valueOf(args[2]);
-		endTS = Long.valueOf(args[3]);
-		topN = Integer.valueOf(args[4]);
-		languages = args[5].split(",");
-		dataFolder = args[6];
-		outputFolder = args[7];
+
+		switch (mode) {
+		case 1:
+			zkHost = args[1];
+			startTS = Long.valueOf(args[2]);
+			endTS = Long.valueOf(args[3]);
+			topN = Integer.valueOf(args[4]);
+			languages = args[5].split(",");
+			outputFolder = args[6];
+			break;
+		case 2:
+			zkHost = args[1];
+			startTS = Long.valueOf(args[2]);
+			endTS = Long.valueOf(args[3]);
+			topN = Integer.valueOf(args[4]);
+			languages = args[5].split(",");
+			outputFolder = args[6];
+			break;
+		case 3:
+			zkHost = args[1];
+			startTS = Long.valueOf(args[2]);
+			endTS = Long.valueOf(args[3]);
+			topN = Integer.valueOf(args[4]);
+			outputFolder = args[5];
+			break;
+
+		case 4:
+			zkHost = args[1];
+			dataFolder = args[2];
+			break;
+
+		default:
+			printUsageAndExit();
+			break;
+		}
+
 		if (DEBUG) {
 			System.out.println("Parameters: " + mode + ", " + zkHost + ", " + startTS + ", " + endTS + ", " + topN
 					+ ", " + Arrays.toString(languages) + ", " + dataFolder + ", " + outputFolder);
 		}
 
 		boolean flag_ts_correct = endTS > startTS;
+
+		// Connect to de HBase
+		connectHBase();
 
 		// DO
 		if (mode == 1 && flag_ts_correct) {
@@ -101,6 +147,23 @@ public class HbaseApp {
 
 	}
 
+	private static void connectHBase() {
+
+		try {
+			hConfiguration = HBaseConfiguration.create();
+			hAdmin = new HBaseAdmin(hConfiguration);
+			hConnection = HConnectionManager.createConnection(hConfiguration);
+			hTableTwitter = new HTable(hConfiguration, TABLENAME);
+		} catch (MasterNotRunningException e) {
+			System.err.println("Error, The Master is not running.");
+		} catch (ZooKeeperConnectionException e) {
+			System.err.println("Error, Can not connect to the Zookeper. Check the connection.");
+		} catch (IOException e) {
+			System.err.println("Error, Can not writte or read in the HBase.");
+		}
+
+	}
+
 	/**
 	 * Given a language (lang), find the Top-N most used words for the given
 	 * language in a time interval defined with a start and end timestamp. Start
@@ -112,38 +175,33 @@ public class HbaseApp {
 			printQuery1Usage();
 		}
 
-		// Instantiating Configuration class
-		Configuration config = HBaseConfiguration.create();
-
-		// Instantiating HTable class
 		try {
-			HTable table = new HTable(config, Table);
 
 			// Instantiating the Scan class
 			Scan scan = new Scan();
 
-			Filter f = new SingleColumnValueFilter(Lang, Name, CompareFilter.CompareOp.EQUAL,
+			Filter f = new SingleColumnValueFilter(familyLang, columnName, CompareFilter.CompareOp.EQUAL,
 					Bytes.toBytes(languages[0]));
 
 			// Scanning the required columns
-			scan.addColumn(Lang, Name);
-			scan.addColumn(Ht, Name);
-			scan.addColumn(Ht, Freq);
+			scan.addColumn(familyLang, columnName);
+			scan.addColumn(familyHt, columnName);
+			scan.addColumn(familyHt, columnFreq);
 			scan.setTimeRange(startTS, endTS);
 
 			scan.setFilter(f);
 
 			// Getting the scan result
-			ResultScanner scanner = table.getScanner(scan);
+			ResultScanner scanner = hTableTwitter.getScanner(scan);
 
 			hashtagList = new HashMap<String, Integer>();
 
 			// Reading values from scan result
 			for (Result result = scanner.next(); result != null; result = scanner.next()) {
 
-				String hashtag = new String(result.getValue(Ht, Name));
-				int freq = Integer.valueOf(new String(result.getValue(Ht, Freq)));
-				
+				String hashtag = new String(result.getValue(familyHt, columnName));
+				int freq = Integer.valueOf(new String(result.getValue(familyHt, columnFreq)));
+
 				if (DEBUG)
 					System.out.println("Hashtag : " + hashtag + " , " + freq + ".");
 
@@ -155,7 +213,7 @@ public class HbaseApp {
 			scanner.close();
 
 			String[][] TopN = getTopNArray(topN);
-			
+
 			if (DEBUG)
 				System.out.println(Arrays.deepToString(TopN));
 
@@ -193,60 +251,53 @@ public class HbaseApp {
 	public static void createDDBB() {
 
 		try {
-			Configuration conf = HBaseConfiguration.create();
-			HBaseAdmin admin = new HBaseAdmin(conf);
 
 			// First we clean the data
 			// If is the first time, it will throw a TableNotFoundException
-			admin.disableTable(Table);
-			admin.deleteTable(Table);
+			cleanTable(hAdmin);
 
 			// And now we add the tables and families
 
-			HTableDescriptor table = new HTableDescriptor(TableName.valueOf(Table));
-			HColumnDescriptor family_1 = new HColumnDescriptor(Lang);
-			HColumnDescriptor family_2 = new HColumnDescriptor(Ht);
+			tableDescriptor = new HTableDescriptor(TableName.valueOf(tableTwitter));
+			HColumnDescriptor family_1 = new HColumnDescriptor(familyLang);
+			HColumnDescriptor family_2 = new HColumnDescriptor(familyHt);
 			family_1.setMaxVersions(100);
 			family_2.setMaxVersions(100);
-			table.addFamily(family_1);
-			table.addFamily(family_2);
-			admin.createTable(table);
-                        
-                        //Finally we read from the file and add the values
-                        
+			tableDescriptor.addFamily(family_1);
+			tableDescriptor.addFamily(family_2);
+			hAdmin.createTable(tableDescriptor);
 
-                        File folder = new File(dataFolder);
-                        File[] listOfFiles = folder.listFiles();
+			// Finally we read from the file and add the values
 
-                        for (File file : listOfFiles) {
-                            if (file.isFile() && file.getName().substring(file.getName().lastIndexOf('.')).equals(".out")) {
-                                FileInputStream fstream = new FileInputStream(file.getName());
-                                BufferedReader br = new BufferedReader(new InputStreamReader(fstream));
+			File folder = new File(dataFolder);
+			File[] listOfFiles = folder.listFiles();
 
-                                String strLine;
+			for (File file : listOfFiles) {
+				if (file.isFile() && file.getName().substring(file.getName().lastIndexOf('.')).equals(".out")) {
+					FileInputStream fstream = new FileInputStream(dataFolder + "/" + file.getName());
+					BufferedReader br = new BufferedReader(new InputStreamReader(fstream));
 
-                                //Read File Line By Line
-                                while ((strLine = br.readLine()) != null)   {
-                                  String[] values = strLine.split(",");
-                                  addValues(values[0], values[1], values[2], values[3]);
-                                  addValues(values[0], values[1], values[4], values[5]);
-                                  addValues(values[0], values[1], values[6], values[7]);
-                                }
+					String strLine;
 
-                                //Close the input stream
-                                br.close();
-                                }
-                        }
+					// Read File Line By Line
+					while ((strLine = br.readLine()) != null) {
+						String[] values = strLine.split(",");
+						addValues(values[0], values[1], values[2], values[3]);
+						addValues(values[0], values[1], values[4], values[5]);
+						addValues(values[0], values[1], values[6], values[7]);
+					}
 
-		} catch (TableNotFoundException e) {
-			//System.out.println("ERR: The table not does not exist");
-              //       printUsageAndExit();
+					// Close the input stream
+					br.close();
+				}
+			}
+
 		} catch (ZooKeeperConnectionException ex) {
 			System.out.println("Error Connecting with the HBase.");
-                        printUsageAndExit();
+			printUsageAndExit();
 		} catch (IOException ex) {
 			System.out.println("Error Writting or reading in HBase.");
-                        printUsageAndExit();
+			printUsageAndExit();
 		}
 	}
 
@@ -304,6 +355,40 @@ public class HbaseApp {
 		return topN;
 	}
 
+	private static void addValues(String timestamp, String language, String ht, String freq) {
+		byte[] key = generateKey(language, ht);
+		Put put = new Put(key, Long.parseLong(timestamp));
+		put.add(familyLang, columnName, Bytes.toBytes(language));
+		put.add(familyHt, columnName, Bytes.toBytes(ht));
+		put.add(familyHt, columnFreq, Bytes.toBytes(freq));
+		try {
+			hTableTwitter.put(put);
+		} catch (RetriesExhaustedWithDetailsException e) {
+			
+			e.printStackTrace();
+		} catch (InterruptedIOException e) {
+			
+			e.printStackTrace();
+		}
+
+	}
+
+	private static byte[] generateKey(String language, String ht) {
+		byte[] key = new byte[42];
+		System.arraycopy(Bytes.toBytes(language), 0, key, 0, language.length());
+		System.arraycopy(Bytes.toBytes(ht), 0, key, 2, ht.length());
+		return key;
+	}
+
+	private static void cleanTable(HBaseAdmin admin) {
+		try {
+			admin.disableTable(tableTwitter);
+			admin.deleteTable(tableTwitter);
+		} catch (IOException ex) {
+			System.out.println("The table does not exist, no need to remove it");
+		}
+	}
+
 	private static void printUsageAndExit() {
 		System.out.println("Usage: ");
 		System.out.println("./hBaseApp.sh mode zkHost startTs endTs N Langauges dataFolder outputFolder");
@@ -311,21 +396,6 @@ public class HbaseApp {
 		System.exit(-1);
 	}
 
-    private static void addValues(String timestamp, String language, String ht, String freq) {
-        byte[] key = generateKey(language, ht);
-        Put put = new Put(key, Long.parseLong(timestamp));
-        put.add(Lang, Name, Bytes.toBytes(language));
-        put.add(Ht, Name, Bytes.toBytes(ht));
-        put.add(Ht, Freq, Bytes.toBytes(freq));
-        
-    }
-
-    private static byte[] generateKey(String language, String ht) {
-        byte[] key = new byte[42];
-        System.arraycopy(Bytes.toBytes(language),0,key,0,language.length());
-        System.arraycopy(Bytes.toBytes(ht),0,key,2,ht.length());
-        return key;
-    }
 	private static void printQuery1Usage() {
 		System.out.println("Usage of Mode 1: ");
 		System.out.println("./hBaseApp.sh 1 zkHost startTS endTS N language outputFolder");
