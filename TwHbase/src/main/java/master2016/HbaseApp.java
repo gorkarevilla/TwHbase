@@ -5,8 +5,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.Map.Entry;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
@@ -16,6 +21,13 @@ import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.filter.CompareFilter;
+import org.apache.hadoop.hbase.filter.Filter;
+import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 
 public class HbaseApp {
@@ -35,8 +47,15 @@ public class HbaseApp {
 
 	// Name of tables and families
 	private static byte[] Table = Bytes.toBytes("twitterStats");
-	private static byte[] CF_1 = Bytes.toBytes("lang");
-	private static byte[] CF_2 = Bytes.toBytes("ht");
+	private static byte[] Lang = Bytes.toBytes("lang"); //CF_1
+	private static byte[] Ht = Bytes.toBytes("ht");     //CF_2
+
+	// Columns
+	private static byte[] Name = Bytes.toBytes("name");
+	private static byte[] Freq = Bytes.toBytes("freq");
+
+	// Data Structures
+	private static Map<String, Integer> hashtagList;
 
 	/**
 	 * 
@@ -62,10 +81,10 @@ public class HbaseApp {
 		outputFolder = args[7];
 		if (DEBUG) {
 			System.out.println("Parameters: " + mode + ", " + zkHost + ", " + startTS + ", " + endTS + ", " + topN
-					+ ", " + languages + ", " + dataFolder + ", " + outputFolder);
+					+ ", " + Arrays.toString(languages) + ", " + dataFolder + ", " + outputFolder);
 		}
 
-		boolean flag_ts_correct = endTS < startTS;
+		boolean flag_ts_correct = endTS > startTS;
 
 		// DO
 		if (mode == 1 && flag_ts_correct) {
@@ -86,9 +105,67 @@ public class HbaseApp {
 	 * Given a language (lang), find the Top-N most used words for the given
 	 * language in a time interval defined with a start and end timestamp. Start
 	 * and end timestamp are in milliseconds
+	 * 
 	 */
 	public static void runQuery1() {
-		// TODO
+		if (languages.length != 1) {
+			printQuery1Usage();
+		}
+
+		// Instantiating Configuration class
+		Configuration config = HBaseConfiguration.create();
+
+		// Instantiating HTable class
+		try {
+			HTable table = new HTable(config, Table);
+
+			// Instantiating the Scan class
+			Scan scan = new Scan();
+
+			Filter f = new SingleColumnValueFilter(Lang, Name, CompareFilter.CompareOp.EQUAL,
+					Bytes.toBytes(languages[0]));
+
+			// Scanning the required columns
+			scan.addColumn(Lang, Name);
+			scan.addColumn(Ht, Name);
+			scan.addColumn(Ht, Freq);
+			scan.setTimeRange(startTS, endTS);
+
+			scan.setFilter(f);
+
+			// Getting the scan result
+			ResultScanner scanner = table.getScanner(scan);
+
+			hashtagList = new HashMap<String, Integer>();
+
+			// Reading values from scan result
+			for (Result result = scanner.next(); result != null; result = scanner.next()) {
+
+				String hashtag = new String(result.getValue(Ht, Name));
+				int freq = Integer.valueOf(new String(result.getValue(Ht, Freq)));
+				
+				if (DEBUG)
+					System.out.println("Hashtag : " + hashtag + " , " + freq + ".");
+
+				// Add to List
+				addToList(hashtag, freq);
+			}
+
+			// closing the scanner
+			scanner.close();
+
+			String[][] TopN = getTopNArray(topN);
+			
+			if (DEBUG)
+				System.out.println(Arrays.deepToString(TopN));
+
+		} catch (TableNotFoundException e) {
+			System.err.println("Error, Table is not created, try with mode 4.");
+
+		} catch (IOException e) {
+			System.err.println("Error, Can not read from the database");
+			// e.printStackTrace();
+		}
 	}
 
 	/**
@@ -127,8 +204,8 @@ public class HbaseApp {
 			// And now we add the tables and families
 
 			HTableDescriptor table = new HTableDescriptor(TableName.valueOf(Table));
-			HColumnDescriptor family_1 = new HColumnDescriptor(CF_1);
-			HColumnDescriptor family_2 = new HColumnDescriptor(CF_2);
+			HColumnDescriptor family_1 = new HColumnDescriptor(Lang);
+			HColumnDescriptor family_2 = new HColumnDescriptor(Ht);
 			family_1.setMaxVersions(100);
 			family_2.setMaxVersions(100);
 			table.addFamily(family_1);
@@ -162,8 +239,8 @@ public class HbaseApp {
                         }
 
 		} catch (TableNotFoundException e) {
-			System.out.println("ERR: The table not does not exist");
-                        printUsageAndExit();
+			//System.out.println("ERR: The table not does not exist");
+              //       printUsageAndExit();
 		} catch (ZooKeeperConnectionException ex) {
 			System.out.println("Error Connecting with the HBase.");
                         printUsageAndExit();
@@ -171,6 +248,60 @@ public class HbaseApp {
 			System.out.println("Error Writting or reading in HBase.");
                         printUsageAndExit();
 		}
+	}
+
+	/**
+	 * Add hashtag to list or increase the freq value
+	 * 
+	 * @param hashtag
+	 * 
+	 */
+	private static void addToList(String hashtag, int freq) {
+
+		// If contains the hashtag, add freq
+		if (hashtagList.containsKey(hashtag)) {
+			hashtagList.put(hashtag, hashtagList.get(hashtag) + freq);
+		} else { // Add with freq
+			hashtagList.put(hashtag, freq);
+		}
+
+	}
+
+	/**
+	 * Get the Top N array with the most used hashtags and the frecuency.
+	 * 
+	 * @return array N rows and 2 cols with the topN Top1 = array[0][x] Top2 =
+	 *         array[1][x] Top3 = array[2][x] ...
+	 */
+	private static String[][] getTopNArray(int n) {
+		String[][] topN = new String[n][2];
+
+		ValueComparator bvc = new ValueComparator(hashtagList);
+		TreeMap<String, Integer> sorted_hashtag = new TreeMap<String, Integer>(bvc);
+
+		sorted_hashtag.putAll(hashtagList);
+		Set<Entry<String, Integer>> set = sorted_hashtag.entrySet();
+		Iterator<Entry<String, Integer>> i = set.iterator();
+		for (int c = 0; c < n; c++) {
+
+			if (i.hasNext() == false) {
+				topN[c][0] = "null";
+				topN[c][1] = "0";
+
+			} else {
+				Map.Entry<String, Integer> me = (Map.Entry<String, Integer>) i.next();
+				topN[c][0] = me.getKey().toString();
+				topN[c][1] = me.getValue().toString();
+			}
+		}
+
+		if (DEBUG) {
+			for (int c = 0; c < n; ++c) {
+				System.out.println("=> Top" + c + ": " + topN[c][0] + ":" + topN[c][1]);
+			}
+		}
+
+		return topN;
 	}
 
 	private static void printUsageAndExit() {
@@ -183,9 +314,9 @@ public class HbaseApp {
     private static void addValues(String timestamp, String language, String ht, String freq) {
         byte[] key = generateKey(language, ht);
         Put put = new Put(key, Long.parseLong(timestamp));
-        put.add(CF_1, Bytes.toBytes("name"), Bytes.toBytes(language));
-        put.add(CF_2, Bytes.toBytes("name"), Bytes.toBytes(ht));
-        put.add(CF_2, Bytes.toBytes("freq"), Bytes.toBytes(freq));
+        put.add(Lang, Name, Bytes.toBytes(language));
+        put.add(Ht, Name, Bytes.toBytes(ht));
+        put.add(Ht, Freq, Bytes.toBytes(freq));
         
     }
 
@@ -195,5 +326,11 @@ public class HbaseApp {
         System.arraycopy(Bytes.toBytes(ht),0,key,2,ht.length());
         return key;
     }
+	private static void printQuery1Usage() {
+		System.out.println("Usage of Mode 1: ");
+		System.out.println("./hBaseApp.sh 1 zkHost startTS endTS N language outputFolder");
+		System.out.println("Be aware that endTs must be greater than startTs");
+		System.exit(-1);
+	}
 
 }
