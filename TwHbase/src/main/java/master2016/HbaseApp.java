@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
+import java.net.ConnectException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -86,7 +87,6 @@ public class HbaseApp {
 	 */
 	public static void main(String[] args) {
 
-
 		if (args.length < 2) {
 			printUsageAndExit();
 		}
@@ -155,12 +155,19 @@ public class HbaseApp {
 	}
 
 	private static void connectHBase() {
+		String[] host = zkHost.split(":");
 
 		try {
 			hConfiguration = HBaseConfiguration.create();
+			hConfiguration.set("hbase.zookeeper.quorum", host[0]);
+			hConfiguration.setInt("hbase.zookeeper.property.clientPort",Integer.valueOf(host[1]));
+			
 			hAdmin = new HBaseAdmin(hConfiguration);
 			hTableTwitter = new HTable(hConfiguration, TABLENAME);
-		} catch (MasterNotRunningException e) {
+		}catch (NumberFormatException e) {
+			System.err.println("Error, zkHost parameter is not properly written, check it.");
+			System.exit(-1);
+		}catch (MasterNotRunningException e) {
 			System.err.println("Error, The Master is not running.");
 		} catch (ZooKeeperConnectionException e) {
 			System.err.println("Error, Can not connect to the Zookeper. Check the connection.");
@@ -175,7 +182,7 @@ public class HbaseApp {
 	 * language in a time interval defined with a start and end timestamp. Start
 	 * and end timestamp are in milliseconds
 	 * 
-     * @param languages
+	 * @param languages
 	 */
 	public static void runQuery1(String[] languages) {
 		if (languages.length != 1) {
@@ -203,23 +210,24 @@ public class HbaseApp {
 			ResultScanner scanner = hTableTwitter.getScanner(scan);
 
 			hashtagList = new HashMap<String, Integer>();
-                        ArrayList<String> hts = new ArrayList();
-                        ArrayList<Integer> fs = new ArrayList();
+			ArrayList<String> hts = new ArrayList();
+			ArrayList<Integer> fs = new ArrayList();
 			// Reading values from scan result
 			for (Result result = scanner.next(); result != null; result = scanner.next()) {
-				
-			
-				//Reading Cells for each result
-				for (Cell cell : result.getColumnCells(familyHt,columnName) ) {
-					hts.add(Bytes.toString ( CellUtil.cloneValue(cell)));
-					
+
+				// Reading Cells for each result
+				for (Cell cell : result.getColumnCells(familyHt, columnName)) {
+					hts.add(Bytes.toString(CellUtil.cloneValue(cell)));
+
 				}
-				for (Cell cell : result.getColumnCells(familyHt,columnFreq) ) {
-                                        fs.add(Integer.valueOf(new String(CellUtil.cloneValue(cell))));
+				for (Cell cell : result.getColumnCells(familyHt, columnFreq)) {
+					fs.add(Integer.valueOf(new String(CellUtil.cloneValue(cell))));
 				}
-                                for (int i = 0; i < hts.size(); i++){
-                                    addToList(hts.get(i), fs.get(i));
-                                }
+				for (int i = 0; i < hts.size(); i++) {
+					addToList(hts.get(i), fs.get(i));
+				}
+				hts.clear();
+				fs.clear();
 			}
 
 			// closing the scanner
@@ -249,12 +257,12 @@ public class HbaseApp {
 			printQuery2Usage();
 		}
 
-		for (String lang : languages){
-                    String[] l = new String[1];
-                    l[0] = lang;
-                    runQuery1(l);
-                
-                }
+		for (String lang : languages) {
+			String[] l = new String[1];
+			l[0] = lang;
+			runQuery1(l);
+
+		}
 	}
 
 	/**
@@ -274,9 +282,6 @@ public class HbaseApp {
 
 		try {
 
-			Configuration conf = HBaseConfiguration.create();
-			HBaseAdmin admin = new HBaseAdmin(conf);
-                        HConnection conn = HConnectionManager.createConnection(conf);
 
 			// First we clean the data
 			// If is the first time, it will throw a TableNotFoundException
@@ -337,6 +342,9 @@ public class HbaseApp {
 	 */
 	private static void addToList(String hashtag, int freq) {
 
+		if(DEBUG)
+			System.out.println("Adding: "+hashtag+","+freq);
+			
 		// If contains the hashtag, add freq
 		if (hashtagList.containsKey(hashtag)) {
 			hashtagList.put(hashtag, hashtagList.get(hashtag) + freq);
@@ -434,12 +442,25 @@ public class HbaseApp {
 		System.exit(-1);
 	}
 
-    private static void printQuery2Usage() {
-                System.out.println("Usage of Mode 2: ");
-		System.out.println("./hBaseApp.sh 1 zkHost startTS endTS N language/s outputFolder");
+	private static void printQuery2Usage() {
+		System.out.println("Usage of Mode 2: ");
+		System.out.println("./hBaseApp.sh 2 zkHost startTS endTS N language/s outputFolder");
 		System.out.println("Be aware that endTs must be greater than startTs");
 		System.exit(-1);
-    }
+	}
+	
+	private static void printQuery3Usage() {
+		System.out.println("Usage of Mode 3: ");
+		System.out.println("./hBaseApp.sh 3 zkHost startTS endTS N outputFolder");
+		System.out.println("Be aware that endTs must be greater than startTs");
+		System.exit(-1);
+	}
+	
+	private static void printCreateDDBBUsage() {
+		System.out.println("Usage of Mode 4: ");
+		System.out.println("./hBaseApp.sh 4 zkHost dataFolder");
+		System.exit(-1);
+	}
+	
 
-    
 }
