@@ -161,6 +161,9 @@ public class HbaseApp {
 
 	}
 
+	/**
+	 * Method to make all the connections to the HBase DDBB
+	 */
 	private static void connectHBase() {
 
 		String[] host = zkHost.split(":");
@@ -230,6 +233,13 @@ public class HbaseApp {
 		runLanguageQuery(null);
 	}
 
+	/**
+	 * Method to run all the diferent querys depending on the parameter lang. If
+	 * it is not null, will check the values for that language, if it is null,
+	 * for any language.
+	 * 
+	 * @param lang
+	 */
 	private static void runLanguageQuery(String lang) {
 		try {
 
@@ -278,9 +288,9 @@ public class HbaseApp {
 
 			if (INFO)
 				if (lang != null)
-					System.out.println("Top"+topN+" of the language: " + lang);
+					System.out.println("Top" + topN + " of the language: " + lang);
 				else
-					System.out.println("Top"+topN+":");
+					System.out.println("Top" + topN + ":");
 
 			String[][] TopN = getTopNArray(topN);
 
@@ -418,6 +428,15 @@ public class HbaseApp {
 		return topN;
 	}
 
+	/**
+	 * 
+	 * Insert values in the HBase
+	 * 
+	 * @param timestamp
+	 * @param language
+	 * @param ht
+	 * @param freq
+	 */
 	private static void addValues(String timestamp, String language, String ht, String freq) {
 		byte[] key = generateKey(language, ht);
 		Put put = new Put(key, Long.parseLong(timestamp));
@@ -438,6 +457,14 @@ public class HbaseApp {
 
 	}
 
+	/**
+	 * 
+	 * Creates the keyrow of the table
+	 * 
+	 * @param language
+	 * @param ht
+	 * @return
+	 */
 	private static byte[] generateKey(String language, String ht) {
 		byte[] key = new byte[KEYSIZE];
 		System.arraycopy(Bytes.toBytes(language), 0, key, 0, language.length());
@@ -445,6 +472,11 @@ public class HbaseApp {
 		return key;
 	}
 
+	/**
+	 * Remove the table from HBase
+	 * 
+	 * @param admin
+	 */
 	private static void cleanTable(HBaseAdmin admin) {
 		try {
 			admin.disableTable(tableTwitter);
@@ -456,6 +488,28 @@ public class HbaseApp {
 		}
 	}
 
+	/**
+	 * Writes in the file:
+	 * 
+	 * Output with results:
+	 * 
+	 * o One output file for each query to be stored in the folder specified
+	 * with the outputFolder input parameter.
+	 * 
+	 * o Filenames must be: ID_query1.out, ID_query2.out, ID_query3.out
+	 * 
+	 * o File format: language, position, word, startTS, endTS where startTS and
+	 * endTS are the ones used as input parameters
+	 * 
+	 * o In case of words with the same frequency the ranking is done according
+	 * with the alphabetic order.
+	 * 
+	 * o Multiple executions of the same query must use the same file to store
+	 * the results without overwriting previous results.
+	 * 
+	 * @param lang
+	 * @param TopN
+	 */
 	private static void writeFile(String lang, String[][] TopN) {
 		String filename = outputFolder + GROUP_ID + "_query" + mode + ".out";
 
@@ -483,12 +537,19 @@ public class HbaseApp {
 		}
 	}
 
+	
+	/**
+	 * Prints Usage of the whole program
+	 */
 	private static void printUsageAndExit() {
 		System.out.println("Usage: ");
 		System.out.println("./hBaseApp.sh mode zkHost startTs endTs N Langauges dataFolder outputFolder");
 		System.exit(-1);
 	}
 
+	/**
+	 * Prints usage of the query 1
+	 */
 	private static void printQuery1Usage() {
 		System.out.println("Usage of Mode 1: ");
 		System.out.println("./hBaseApp.sh 1 zkHost startTS endTS N language outputFolder");
@@ -496,6 +557,9 @@ public class HbaseApp {
 		System.exit(-1);
 	}
 
+	/**
+	 * Prints usage of the query 2
+	 */
 	private static void printQuery2Usage() {
 		System.out.println("Usage of Mode 2: ");
 		System.out.println("./hBaseApp.sh 2 zkHost startTS endTS N language/s outputFolder");
@@ -503,6 +567,9 @@ public class HbaseApp {
 		System.exit(-1);
 	}
 
+	/**
+	 * Prints usage of the query 3
+	 */
 	private static void printQuery3Usage() {
 		System.out.println("Usage of Mode 3: ");
 		System.out.println("./hBaseApp.sh 3 zkHost startTS endTS N outputFolder");
@@ -510,6 +577,9 @@ public class HbaseApp {
 		System.exit(-1);
 	}
 
+	/**
+	 * Prints usage of the mode 4
+	 */
 	private static void printCreateDDBBUsage() {
 		System.out.println("Usage of Mode 4: ");
 		System.out.println("./hBaseApp.sh 4 zkHost dataFolder");
