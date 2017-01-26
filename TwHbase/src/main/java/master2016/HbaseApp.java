@@ -3,6 +3,7 @@ package master2016;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
@@ -38,8 +39,12 @@ import org.apache.hadoop.hbase.util.Bytes;
 
 public class HbaseApp {
 
+	// GroupID
+	private static final String GROUP_ID = "16";
+
 	// Prints to be displayed
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
+	private static final boolean INFO = true;
 
 	// Parameters for the program
 	private final static String TABLENAME = "twitterStats";
@@ -136,11 +141,11 @@ public class HbaseApp {
 
 		// DO
 		if (mode == 1 && flag_ts_correct) {
-			runQuery1(languages);
+			runQuery1();
 		} else if (mode == 2 && flag_ts_correct) {
 			runQuery2();
 		} else if (mode == 3 && flag_ts_correct) {
-			runQuery2();
+			runQuery3();
 		} else if (mode == 4) {
 			createDDBB();
 		} else {
@@ -150,19 +155,20 @@ public class HbaseApp {
 	}
 
 	private static void connectHBase() {
+
 		String[] host = zkHost.split(":");
 
 		try {
 			hConfiguration = HBaseConfiguration.create();
 			hConfiguration.set("hbase.zookeeper.quorum", host[0]);
-			hConfiguration.setInt("hbase.zookeeper.property.clientPort",Integer.valueOf(host[1]));
-			
+			hConfiguration.setInt("hbase.zookeeper.property.clientPort", Integer.valueOf(host[1]));
+
 			hAdmin = new HBaseAdmin(hConfiguration);
 			hTableTwitter = new HTable(hConfiguration, TABLENAME);
-		}catch (NumberFormatException e) {
+		} catch (NumberFormatException e) {
 			System.err.println("Error, zkHost parameter is not properly written, check it.");
 			System.exit(-1);
-		}catch (MasterNotRunningException e) {
+		} catch (MasterNotRunningException e) {
 			System.err.println("Error, The Master is not running.");
 		} catch (ZooKeeperConnectionException e) {
 			System.err.println("Error, Can not connect to the Zookeper. Check the connection.");
@@ -179,18 +185,55 @@ public class HbaseApp {
 	 * 
 	 * @param languages
 	 */
-	public static void runQuery1(String[] languages) {
+	public static void runQuery1() {
 		if (languages.length != 1) {
 			printQuery1Usage();
 		}
 
+		runLanguageQuery(languages[0]);
+
+	}
+
+	/**
+	 * Find the list of Top-N most used words for each language in a time
+	 * interval defined with the provided start and end timestamp. Start and end
+	 * timestamp are in milliseconds.
+	 */
+	public static void runQuery2() {
+		if (languages.length < 1) {
+			printQuery2Usage();
+		}
+
+		for (String lang : languages) {
+			runLanguageQuery(lang);
+
+		}
+	}
+
+	/**
+	 * Find the Top-N most used words and the frequency of each word regardless
+	 * the language in a time interval defined with the provided start and end
+	 * timestamp. Start and end timestamp are in milliseconds.
+	 */
+	public static void runQuery3() {
+		if (languages != null) {
+			printQuery3Usage();
+		}
+
+		runLanguageQuery(null);
+	}
+
+	private static void runLanguageQuery(String lang) {
 		try {
 
 			// Instantiating the Scan class
 			Scan scan = new Scan();
 
-			Filter f = new SingleColumnValueFilter(familyLang, columnName, CompareFilter.CompareOp.EQUAL,
-					Bytes.toBytes(languages[0]));
+			if (lang != null) {
+				Filter f = new SingleColumnValueFilter(familyLang, columnName, CompareFilter.CompareOp.EQUAL,
+						Bytes.toBytes(lang));
+				scan.setFilter(f);
+			}
 
 			// Scanning the required columns
 			scan.addColumn(familyLang, columnName);
@@ -198,8 +241,6 @@ public class HbaseApp {
 			scan.addColumn(familyHt, columnFreq);
 			scan.setTimeRange(startTS, endTS);
 			scan.setMaxVersions(MAXVERSIONS);
-
-			scan.setFilter(f);
 
 			// Getting the scan result
 			ResultScanner scanner = hTableTwitter.getScanner(scan);
@@ -228,10 +269,18 @@ public class HbaseApp {
 			// closing the scanner
 			scanner.close();
 
+			if (INFO)
+				if (lang != null)
+					System.out.println("Top"+topN+" of the language: " + lang);
+				else
+					System.out.println("Top"+topN+":");
+
 			String[][] TopN = getTopNArray(topN);
 
-			if (DEBUG)
-				System.out.println(Arrays.deepToString(TopN));
+			// if (DEBUG)
+			// System.out.println(Arrays.deepToString(TopN));
+
+			writeFile(lang, TopN);
 
 		} catch (TableNotFoundException e) {
 			System.err.println("Error, Table is not created, try with mode 4.");
@@ -243,40 +292,16 @@ public class HbaseApp {
 	}
 
 	/**
-	 * Find the list of Top-N most used words for each language in a time
-	 * interval defined with the provided start and end timestamp. Start and end
-	 * timestamp are in milliseconds.
-	 */
-	public static void runQuery2() {
-		if (languages.length < 1) {
-			printQuery2Usage();
-		}
-
-		for (String lang : languages) {
-			String[] l = new String[1];
-			l[0] = lang;
-			runQuery1(l);
-
-		}
-	}
-
-	/**
-	 * Find the Top-N most used words and the frequency of each word regardless
-	 * the language in a time interval defined with the provided start and end
-	 * timestamp. Start and end timestamp are in milliseconds.
-	 */
-	public static void runQuery3() {
-		// TODO
-	}
-
-	/**
 	 * Create and load data from the files. File names have the format
 	 * “lang.out”, for example en.out, it.out, es.out
 	 */
 	public static void createDDBB() {
 
-		try {
+		if (zkHost == null || dataFolder == null) {
+			printCreateDDBBUsage();
+		}
 
+		try {
 
 			// First we clean the data
 			// If is the first time, it will throw a TableNotFoundException
@@ -337,9 +362,9 @@ public class HbaseApp {
 	 */
 	private static void addToList(String hashtag, int freq) {
 
-		if(DEBUG)
-			System.out.println("Adding: "+hashtag+","+freq);
-			
+		if (DEBUG)
+			System.out.println("Adding: " + hashtag + "," + freq);
+
 		// If contains the hashtag, add freq
 		if (hashtagList.containsKey(hashtag)) {
 			hashtagList.put(hashtag, hashtagList.get(hashtag) + freq);
@@ -377,9 +402,9 @@ public class HbaseApp {
 			}
 		}
 
-		if (DEBUG) {
+		if (INFO) {
 			for (int c = 0; c < n; ++c) {
-				System.out.println("=> Top" + c + ": " + topN[c][0] + ":" + topN[c][1]);
+				System.out.println("=> Top" + (c + 1) + ": " + topN[c][0] + ":" + topN[c][1]);
 			}
 		}
 
@@ -424,6 +449,33 @@ public class HbaseApp {
 		}
 	}
 
+	private static void writeFile(String lang, String[][] TopN) {
+		String filename = outputFolder + GROUP_ID + "_query" + mode + ".out";
+
+		try {
+
+			FileWriter fw = new FileWriter(filename, true);
+
+			for (int i = 0; i < TopN.length; ++i) {
+				String line = lang + "," + (i + 1) + "," + TopN[i][0] + "," + startTS + "," + endTS;
+
+				// Append to the file
+				fw.write(line);
+				fw.write(System.getProperty("line.separator"));
+				// fw.write(System.lineSeparator()); // Only > Java 7
+			}
+
+			if (DEBUG)
+				System.out.println("File writted correctly.");
+
+			fw.close();
+
+		} catch (IOException e) {
+			System.err.println("Error, Can not writte in the output file.");
+			System.exit(-1);
+		}
+	}
+
 	private static void printUsageAndExit() {
 		System.out.println("Usage: ");
 		System.out.println("./hBaseApp.sh mode zkHost startTs endTs N Langauges dataFolder outputFolder");
@@ -443,19 +495,18 @@ public class HbaseApp {
 		System.out.println("Be aware that endTs must be greater than startTs");
 		System.exit(-1);
 	}
-	
+
 	private static void printQuery3Usage() {
 		System.out.println("Usage of Mode 3: ");
 		System.out.println("./hBaseApp.sh 3 zkHost startTS endTS N outputFolder");
 		System.out.println("Be aware that endTs must be greater than startTs");
 		System.exit(-1);
 	}
-	
+
 	private static void printCreateDDBBUsage() {
 		System.out.println("Usage of Mode 4: ");
 		System.out.println("./hBaseApp.sh 4 zkHost dataFolder");
 		System.exit(-1);
 	}
-	
 
 }
