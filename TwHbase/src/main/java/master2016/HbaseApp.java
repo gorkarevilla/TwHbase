@@ -6,12 +6,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
-import java.net.ConnectException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -27,8 +25,6 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
-import org.apache.hadoop.hbase.client.HConnection;
-import org.apache.hadoop.hbase.client.HConnectionManager;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Result;
@@ -44,7 +40,6 @@ public class HbaseApp {
 
 	// Prints to be displayed
 	private static final boolean DEBUG = true;
-	private static final boolean INFO = true;
 
 	// Parameters for the program
 	private final static String TABLENAME = "twitterStats";
@@ -210,8 +205,8 @@ public class HbaseApp {
 			ResultScanner scanner = hTableTwitter.getScanner(scan);
 
 			hashtagList = new HashMap<String, Integer>();
-			ArrayList<String> hts = new ArrayList();
-			ArrayList<Integer> fs = new ArrayList();
+			ArrayList<String> hts = new ArrayList<String>();
+			ArrayList<Integer> fs = new ArrayList<Integer>();
 			// Reading values from scan result
 			for (Result result = scanner.next(); result != null; result = scanner.next()) {
 
