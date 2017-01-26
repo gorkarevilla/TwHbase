@@ -37,6 +37,13 @@ import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 
+/**
+ * 
+ *
+ * @authors Alvaro Feal; Gorka Revilla
+ * @version 0.1
+ * @since 23-01-2017
+ */
 public class HbaseApp {
 
 	// GroupID
