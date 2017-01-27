@@ -103,6 +103,8 @@ public class HbaseApp {
 
 		switch (mode) {
 		case 1:
+                        if (args.length != 7)
+                            printQuery1Usage();
 			zkHost = args[1];
 			startTS = Long.valueOf(args[2]);
 			endTS = Long.valueOf(args[3]);
@@ -111,6 +113,8 @@ public class HbaseApp {
 			outputFolder = args[6];
 			break;
 		case 2:
+                        if (args.length != 7)
+                            printQuery2Usage();
 			zkHost = args[1];
 			startTS = Long.valueOf(args[2]);
 			endTS = Long.valueOf(args[3]);
@@ -119,6 +123,8 @@ public class HbaseApp {
 			outputFolder = args[6];
 			break;
 		case 3:
+                        if (args.length != 6)
+                            printQuery3Usage();
 			zkHost = args[1];
 			startTS = Long.valueOf(args[2]);
 			endTS = Long.valueOf(args[3]);
@@ -167,6 +173,11 @@ public class HbaseApp {
 	private static void connectHBase() {
 
 		String[] host = zkHost.split(":");
+                if (host.length < 2){
+                    System.err.println("Error, zkHost parameter is not properly written, check it.");
+			System.exit(-1);
+                }
+                    
 
 		try {
 			hConfiguration = HBaseConfiguration.create();
@@ -242,7 +253,11 @@ public class HbaseApp {
 	 */
 	private static void runLanguageQuery(String lang) {
 		try {
-
+                        
+                        if (topN <= 0){
+                            System.out.println("N paramater needs to be greater than zero");
+                            System.exit(-1);
+                        }
 			// Instantiating the Scan class
 			Scan scan = new Scan();
 
@@ -265,8 +280,10 @@ public class HbaseApp {
 			hashtagList = new HashMap<String, Integer>();
 			ArrayList<String> hts = new ArrayList<String>();
 			ArrayList<Integer> fs = new ArrayList<Integer>();
+                        boolean flag_empty = true; 
 			// Reading values from scan result
 			for (Result result = scanner.next(); result != null; result = scanner.next()) {
+                            flag_empty = false;
 
 				// Reading Cells for each result
 				for (Cell cell : result.getColumnCells(familyHt, columnName)) {
@@ -282,22 +299,30 @@ public class HbaseApp {
 				hts.clear();
 				fs.clear();
 			}
+                        
 
 			// closing the scanner
 			scanner.close();
+                        if (flag_empty){
+                            System.out.println("No data for language " + lang +
+                                    ", try to set different timeStamp filters or adding new data with mode 4");
+                            
+                        }
+                        else{
 
-			if (INFO)
-				if (lang != null)
-					System.out.println("Top" + topN + " of the language: " + lang);
-				else
-					System.out.println("Top" + topN + ":");
+                            if (INFO)
+                                    if (lang != null)
+                                            System.out.println("Top" + topN + " of the language: " + lang);
+                                    else
+                                            System.out.println("Top" + topN + ":");
 
-			String[][] TopN = getTopNArray(topN);
+                            String[][] TopN = getTopNArray(topN);
 
-			// if (DEBUG)
-			// System.out.println(Arrays.deepToString(TopN));
+                            // if (DEBUG)
+                            // System.out.println(Arrays.deepToString(TopN));
 
-			writeFile(lang, TopN);
+                            writeFile(lang, TopN);
+                        }
 
 		} catch (TableNotFoundException e) {
 			System.err.println("Error, Table is not created, try with mode 4.");
@@ -398,7 +423,7 @@ public class HbaseApp {
 	 *         array[1][x] Top3 = array[2][x] ...
 	 */
 	private static String[][] getTopNArray(int n) {
-		String[][] topN = new String[n][2];
+                String[][] topN = new String[n][2];
 
 		ValueComparator bvc = new ValueComparator(hashtagList);
 		TreeMap<String, Integer> sorted_hashtag = new TreeMap<String, Integer>(bvc);
